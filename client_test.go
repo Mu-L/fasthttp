@@ -126,11 +126,12 @@ func TestPipelineClientIssue832(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 
 	req := AcquireRequest()
-	defer ReleaseRequest(req)
+	// Don't defer ReleaseRequest as we use it in a goroutine that might not be done at the end.
+
 	req.SetHost("example.com")
 
 	res := AcquireResponse()
-	defer ReleaseResponse(res)
+	// Don't defer ReleaseResponse as we use it in a goroutine that might not be done at the end.
 
 	client := PipelineClient{
 		Dial: func(addr string) (net.Conn, error) {
@@ -168,7 +169,7 @@ func TestPipelineClientIssue832(t *testing.T) {
 	}()
 
 	select {
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 2):
 		t.Fatal("PipelineClient did not restart worker")
 	case <-done:
 	}
@@ -1281,7 +1282,7 @@ func TestHostClientMaxConnsWithDeadline(t *testing.T) {
 	var (
 		emptyBodyCount uint8
 		ln             = fasthttputil.NewInmemoryListener()
-		timeout        = 50 * time.Millisecond
+		timeout        = 200 * time.Millisecond
 		wg             sync.WaitGroup
 	)
 
@@ -2579,7 +2580,7 @@ func TestHostClientMaxConnWaitTimeoutSuccess(t *testing.T) {
 			return ln.Dial()
 		},
 		MaxConns:           1,
-		MaxConnWaitTimeout: 200 * time.Millisecond,
+		MaxConnWaitTimeout: time.Second * 2,
 	}
 
 	for i := 0; i < 5; i++ {
@@ -2617,7 +2618,7 @@ func TestHostClientMaxConnWaitTimeoutSuccess(t *testing.T) {
 	}
 	select {
 	case <-serverStopCh:
-	case <-time.After(time.Second):
+	case <-time.After(time.Second * 5):
 		t.Fatalf("timeout")
 	}
 
