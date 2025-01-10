@@ -13,15 +13,15 @@ import (
 )
 
 func setUp() {
-	os.Args = append(os.Args, preforkChildFlag)
+	os.Setenv(preforkChildEnvVariable, "1")
 }
 
 func tearDown() {
-	os.Args = os.Args[:len(os.Args)-1]
+	os.Unsetenv(preforkChildEnvVariable)
 }
 
 func getAddr() string {
-	return fmt.Sprintf("0.0.0.0:%d", rand.Intn(9000-3000)+3000)
+	return fmt.Sprintf("127.0.0.1:%d", rand.Intn(9000-3000)+3000)
 }
 
 func Test_IsChild(t *testing.T) {
@@ -48,7 +48,7 @@ func Test_New(t *testing.T) {
 	p := New(s)
 
 	if p.Network != defaultNetwork {
-		t.Errorf("Prefork.Netork == %s, want %s", p.Network, defaultNetwork)
+		t.Errorf("Prefork.Network == %q, want %q", p.Network, defaultNetwork)
 	}
 
 	if reflect.ValueOf(p.ServeFunc).Pointer() != reflect.ValueOf(s.Serve).Pointer() {
@@ -73,7 +73,6 @@ func Test_listen(t *testing.T) {
 	addr := getAddr()
 
 	ln, err := p.listen(addr)
-
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -82,11 +81,11 @@ func Test_listen(t *testing.T) {
 
 	lnAddr := ln.Addr().String()
 	if lnAddr != addr {
-		t.Errorf("Prefork.Addr == %s, want %s", lnAddr, addr)
+		t.Errorf("Prefork.Addr == %q, want %q", lnAddr, addr)
 	}
 
 	if p.Network != defaultNetwork {
-		t.Errorf("Prefork.Network == %s, want %s", p.Network, defaultNetwork)
+		t.Errorf("Prefork.Network == %q, want %q", p.Network, defaultNetwork)
 	}
 
 	procs := runtime.GOMAXPROCS(0)
@@ -106,7 +105,6 @@ func Test_setTCPListenerFiles(t *testing.T) {
 	addr := getAddr()
 
 	err := p.setTCPListenerFiles(addr)
-
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -119,11 +117,11 @@ func Test_setTCPListenerFiles(t *testing.T) {
 
 	lnAddr := p.ln.Addr().String()
 	if lnAddr != addr {
-		t.Errorf("Prefork.Addr == %s, want %s", lnAddr, addr)
+		t.Errorf("Prefork.Addr == %q, want %q", lnAddr, addr)
 	}
 
 	if p.Network != defaultNetwork {
-		t.Errorf("Prefork.Network == %s, want %s", p.Network, defaultNetwork)
+		t.Errorf("Prefork.Network == %q, want %q", p.Network, defaultNetwork)
 	}
 
 	if len(p.files) != 1 {
@@ -155,7 +153,7 @@ func Test_ListenAndServe(t *testing.T) {
 
 	lnAddr := p.ln.Addr().String()
 	if lnAddr != addr {
-		t.Errorf("Prefork.Addr == %s, want %s", lnAddr, addr)
+		t.Errorf("Prefork.Addr == %q, want %q", lnAddr, addr)
 	}
 
 	if p.ln == nil {
@@ -187,7 +185,7 @@ func Test_ListenAndServeTLS(t *testing.T) {
 
 	lnAddr := p.ln.Addr().String()
 	if lnAddr != addr {
-		t.Errorf("Prefork.Addr == %s, want %s", lnAddr, addr)
+		t.Errorf("Prefork.Addr == %q, want %q", lnAddr, addr)
 	}
 
 	if p.ln == nil {
@@ -219,7 +217,7 @@ func Test_ListenAndServeTLSEmbed(t *testing.T) {
 
 	lnAddr := p.ln.Addr().String()
 	if lnAddr != addr {
-		t.Errorf("Prefork.Addr == %s, want %s", lnAddr, addr)
+		t.Errorf("Prefork.Addr == %q, want %q", lnAddr, addr)
 	}
 
 	if p.ln == nil {

@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"testing"
 )
 
@@ -42,7 +42,7 @@ func testBrotliBytesSingleCase(s string) error {
 
 	unbrotliedS, err := AppendUnbrotliBytes(prefix, brotlipedS[len(prefix):])
 	if err != nil {
-		return fmt.Errorf("unexpected error when uncompressing %q: %s", s, err)
+		return fmt.Errorf("unexpected error when uncompressing %q: %w", s, err)
 	}
 	if !bytes.Equal(unbrotliedS[:len(prefix)], prefix) {
 		return fmt.Errorf("unexpected prefix when uncompressing %q: %q. Expecting %q", s, unbrotliedS[:len(prefix)], prefix)
@@ -83,17 +83,17 @@ func testBrotliCompressSingleCase(s string) error {
 	var buf bytes.Buffer
 	zw := acquireStacklessBrotliWriter(&buf, CompressDefaultCompression)
 	if _, err := zw.Write([]byte(s)); err != nil {
-		return fmt.Errorf("unexpected error: %s. s=%q", err, s)
+		return fmt.Errorf("unexpected error: %w. s=%q", err, s)
 	}
 	releaseStacklessBrotliWriter(zw, CompressDefaultCompression)
 
 	zr, err := acquireBrotliReader(&buf)
 	if err != nil {
-		return fmt.Errorf("unexpected error: %s. s=%q", err, s)
+		return fmt.Errorf("unexpected error: %w. s=%q", err, s)
 	}
-	body, err := ioutil.ReadAll(zr)
+	body, err := io.ReadAll(zr)
 	if err != nil {
-		return fmt.Errorf("unexpected error: %s. s=%q", err, s)
+		return fmt.Errorf("unexpected error: %w. s=%q", err, s)
 	}
 	if string(body) != s {
 		return fmt.Errorf("unexpected string after decompression: %q. Expecting %q", body, s)
@@ -105,9 +105,9 @@ func testBrotliCompressSingleCase(s string) error {
 func TestCompressHandlerBrotliLevel(t *testing.T) {
 	t.Parallel()
 
-	expectedBody := string(createFixedBody(2e4))
+	expectedBody := createFixedBody(2e4)
 	h := CompressHandlerBrotliLevel(func(ctx *RequestCtx) {
-		ctx.Write([]byte(expectedBody)) //nolint:errcheck
+		ctx.Write(expectedBody) //nolint:errcheck
 	}, CompressBrotliDefaultCompression, CompressDefaultCompression)
 
 	var ctx RequestCtx
@@ -118,14 +118,14 @@ func TestCompressHandlerBrotliLevel(t *testing.T) {
 	s := ctx.Response.String()
 	br := bufio.NewReader(bytes.NewBufferString(s))
 	if err := resp.Read(br); err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	ce := resp.Header.Peek(HeaderContentEncoding)
-	if string(ce) != "" {
+	ce := resp.Header.ContentEncoding()
+	if len(ce) != 0 {
 		t.Fatalf("unexpected Content-Encoding: %q. Expecting %q", ce, "")
 	}
 	body := resp.Body()
-	if string(body) != expectedBody {
+	if !bytes.Equal(body, expectedBody) {
 		t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
 	}
 
@@ -138,17 +138,17 @@ func TestCompressHandlerBrotliLevel(t *testing.T) {
 	s = ctx.Response.String()
 	br = bufio.NewReader(bytes.NewBufferString(s))
 	if err := resp.Read(br); err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	ce = resp.Header.Peek(HeaderContentEncoding)
+	ce = resp.Header.ContentEncoding()
 	if string(ce) != "gzip" {
 		t.Fatalf("unexpected Content-Encoding: %q. Expecting %q", ce, "gzip")
 	}
 	body, err := resp.BodyGunzip()
 	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if string(body) != expectedBody {
+	if !bytes.Equal(body, expectedBody) {
 		t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
 	}
 
@@ -161,17 +161,17 @@ func TestCompressHandlerBrotliLevel(t *testing.T) {
 	s = ctx.Response.String()
 	br = bufio.NewReader(bytes.NewBufferString(s))
 	if err := resp.Read(br); err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	ce = resp.Header.Peek(HeaderContentEncoding)
+	ce = resp.Header.ContentEncoding()
 	if string(ce) != "br" {
 		t.Fatalf("unexpected Content-Encoding: %q. Expecting %q", ce, "br")
 	}
 	body, err = resp.BodyUnbrotli()
 	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if string(body) != expectedBody {
+	if !bytes.Equal(body, expectedBody) {
 		t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
 	}
 }

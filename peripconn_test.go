@@ -4,6 +4,8 @@ import (
 	"testing"
 )
 
+var _ connTLSer = &perIPTLSConn{}
+
 func TestIPxUint32(t *testing.T) {
 	t.Parallel()
 
@@ -16,7 +18,7 @@ func testIPxUint32(t *testing.T, n uint32) {
 	ip := uint322ip(n)
 	nn := ip2uint32(ip)
 	if n != nn {
-		t.Fatalf("Unexpected value=%d for ip=%s. Expected %d", nn, ip, n)
+		t.Fatalf("Unexpected value=%d for ip=%q. Expected %d", nn, ip, n)
 	}
 }
 
@@ -24,8 +26,6 @@ func TestPerIPConnCounter(t *testing.T) {
 	t.Parallel()
 
 	var cc perIPConnCounter
-
-	expectPanic(t, func() { cc.Unregister(123) })
 
 	for i := 1; i < 100; i++ {
 		if n := cc.Register(123); n != i {
@@ -43,21 +43,9 @@ func TestPerIPConnCounter(t *testing.T) {
 	}
 	cc.Unregister(456)
 
-	expectPanic(t, func() { cc.Unregister(123) })
-	expectPanic(t, func() { cc.Unregister(456) })
-
 	n = cc.Register(123)
 	if n != 1 {
 		t.Fatalf("Unexpected counter value=%d. Expected 1", n)
 	}
 	cc.Unregister(123)
-}
-
-func expectPanic(t *testing.T, f func()) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("Expecting panic")
-		}
-	}()
-	f()
 }

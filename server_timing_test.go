@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"runtime"
@@ -251,12 +250,12 @@ func (c *fakeServerConn) SetWriteDeadline(t time.Time) error {
 }
 
 type fakeListener struct {
-	lock            sync.Mutex
-	requestsCount   int
-	requestsPerConn int
-	request         []byte
 	ch              chan *fakeServerConn
 	done            chan struct{}
+	request         []byte
+	requestsCount   int
+	requestsPerConn int
+	lock            sync.Mutex
 	closed          bool
 }
 
@@ -317,7 +316,7 @@ func newFakeListener(requestsCount, clientsCount, requestsPerConn int, request s
 var (
 	fakeResponse = []byte("Hello, world!")
 	getRequest   = "GET /foobar?baz HTTP/1.1\r\nHost: google.com\r\nUser-Agent: aaa/bbb/ccc/ddd/eee Firefox Chrome MSIE Opera\r\n" +
-		"Referer: http://xxx.com/aaa?bbb=ccc\r\nCookie: foo=bar; baz=baraz; aa=aakslsdweriwereowriewroire\r\n\r\n"
+		"Referer: http://example.com/aaa?bbb=ccc\r\nCookie: foo=bar; baz=baraz; aa=aakslsdweriwereowriewroire\r\n\r\n"
 	postRequest = fmt.Sprintf("POST /foobar?baz HTTP/1.1\r\nHost: google.com\r\nContent-Type: foo/bar\r\nContent-Length: %d\r\n"+
 		"User-Agent: Opera Chrome MSIE Firefox and other/1.2.34\r\nReferer: http://google.com/aaaa/bbb/ccc\r\n"+
 		"Cookie: foo=bar; baz=baraz; aa=aakslsdweriwereowriewroire\r\n\r\n%s",
@@ -329,7 +328,7 @@ func benchmarkServerGet(b *testing.B, clientsCount, requestsPerConn int) {
 	s := &Server{
 		Handler: func(ctx *RequestCtx) {
 			if !ctx.IsGet() {
-				b.Fatalf("Unexpected request method: %s", ctx.Method())
+				b.Fatalf("Unexpected request method: %q", ctx.Method())
 			}
 			ctx.Success("text/plain", fakeResponse)
 			if requestsPerConn == 1 {
@@ -348,7 +347,7 @@ func benchmarkNetHTTPServerGet(b *testing.B, clientsCount, requestsPerConn int) 
 	s := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			if req.Method != MethodGet {
-				b.Fatalf("Unexpected request method: %s", req.Method)
+				b.Fatalf("Unexpected request method: %q", req.Method)
 			}
 			h := w.Header()
 			h.Set("Content-Type", "text/plain")
@@ -368,7 +367,7 @@ func benchmarkServerPost(b *testing.B, clientsCount, requestsPerConn int) {
 	s := &Server{
 		Handler: func(ctx *RequestCtx) {
 			if !ctx.IsPost() {
-				b.Fatalf("Unexpected request method: %s", ctx.Method())
+				b.Fatalf("Unexpected request method: %q", ctx.Method())
 			}
 			body := ctx.Request.Body()
 			if !bytes.Equal(body, fakeResponse) {
@@ -391,11 +390,11 @@ func benchmarkNetHTTPServerPost(b *testing.B, clientsCount, requestsPerConn int)
 	s := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			if req.Method != MethodPost {
-				b.Fatalf("Unexpected request method: %s", req.Method)
+				b.Fatalf("Unexpected request method: %q", req.Method)
 			}
-			body, err := ioutil.ReadAll(req.Body)
+			body, err := io.ReadAll(req.Body)
 			if err != nil {
-				b.Fatalf("Unexpected error: %s", err)
+				b.Fatalf("Unexpected error: %v", err)
 			}
 			req.Body.Close()
 			if !bytes.Equal(body, fakeResponse) {

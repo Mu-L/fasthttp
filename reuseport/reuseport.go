@@ -1,4 +1,4 @@
-// +build !windows
+//go:build !windows && !aix
 
 // Package reuseport provides TCP net.Listener with SO_REUSEPORT support.
 //
@@ -20,8 +20,8 @@ import (
 // The returned listener tries enabling the following TCP options, which usually
 // have positive impact on performance:
 //
-// - TCP_DEFER_ACCEPT. This option expects that the server reads from accepted
-//   connections before writing to them.
+//   - TCP_DEFER_ACCEPT. This option expects that the server reads from accepted
+//     connections before writing to them.
 //
 // - TCP_FASTOPEN. See https://lwn.net/Articles/508865/ for details.
 //
@@ -34,7 +34,7 @@ import (
 func Listen(network, addr string) (net.Listener, error) {
 	ln, err := cfg.NewListener(network, addr)
 	if err != nil && strings.Contains(err.Error(), "SO_REUSEPORT") {
-		return nil, &ErrNoReusePort{err}
+		return nil, &ErrNoReusePort{err: err}
 	}
 	return ln, err
 }

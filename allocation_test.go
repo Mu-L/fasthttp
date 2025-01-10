@@ -1,10 +1,9 @@
-// +build !race
+//go:build !race
 
 package fasthttp
 
 import (
 	"net"
-
 	"testing"
 )
 
@@ -38,7 +37,7 @@ func TestAllocationServeConn(t *testing.T) {
 func TestAllocationClient(t *testing.T) {
 	ln, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("cannot listen: %s", err)
+		t.Fatalf("cannot listen: %v", err)
 	}
 	defer ln.Close()
 
@@ -70,7 +69,7 @@ func TestAllocationClient(t *testing.T) {
 }
 
 func TestAllocationURI(t *testing.T) {
-	uri := []byte("http://username:password@example.com/some/path?foo=bar#test")
+	uri := []byte("http://username:password@hello.%e4%b8%96%e7%95%8c.com/some/path?foo=bar#test")
 
 	n := testing.AllocsPerRun(100, func() {
 		u := AcquireURI()

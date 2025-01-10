@@ -3,21 +3,49 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
-	"fmt"
+	"html"
 	"net"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/valyala/bytebufferpool"
 )
 
+func TestAppendQuotedArg(t *testing.T) {
+	t.Parallel()
+
+	// Sync with url.QueryEscape
+	allcases := make([]byte, 256)
+	for i := 0; i < 256; i++ {
+		allcases[i] = byte(i)
+	}
+	res := string(AppendQuotedArg(nil, allcases))
+	expect := url.QueryEscape(string(allcases))
+	if res != expect {
+		t.Fatalf("unexpected string %q. Expecting %q.", res, expect)
+	}
+}
+
 func TestAppendHTMLEscape(t *testing.T) {
 	t.Parallel()
+
+	// Sync with html.EscapeString
+	allcases := make([]byte, 256)
+	for i := 0; i < 256; i++ {
+		allcases[i] = byte(i)
+	}
+	res := string(AppendHTMLEscape(nil, string(allcases)))
+	expect := html.EscapeString(string(allcases))
+	if res != expect {
+		t.Fatalf("unexpected string %q. Expecting %q.", res, expect)
+	}
 
 	testAppendHTMLEscape(t, "", "")
 	testAppendHTMLEscape(t, "<", "&lt;")
 	testAppendHTMLEscape(t, "a", "a")
-	testAppendHTMLEscape(t, `><"''`, "&gt;&lt;&quot;&#39;&#39;")
+	testAppendHTMLEscape(t, `><"''`, "&gt;&lt;&#34;&#39;&#39;")
 	testAppendHTMLEscape(t, "fo<b x='ss'>a</b>xxx", "fo&lt;b x=&#39;ss&#39;&gt;a&lt;/b&gt;xxx")
 }
 
@@ -31,33 +59,37 @@ func testAppendHTMLEscape(t *testing.T, s, expectedS string) {
 func TestParseIPv4(t *testing.T) {
 	t.Parallel()
 
-	testParseIPv4(t, "0.0.0.0", true)
-	testParseIPv4(t, "255.255.255.255", true)
-	testParseIPv4(t, "123.45.67.89", true)
+	testParseIPv4(t, net.IP{0}, "0.0.0.0", true)
+	testParseIPv4(t, nil, "0.0.0.0", true)
+	testParseIPv4(t, net.IP{0, 0, 0, 0, 0}, "0.0.0.0", true)
+	testParseIPv4(t, nil, "255.255.255.255", true)
+	testParseIPv4(t, nil, "123.45.67.89", true)
 
 	// ipv6 shouldn't work
-	testParseIPv4(t, "2001:4860:0:2001::68", false)
+	testParseIPv4(t, nil, "2001:4860:0:2001::68", false)
 
 	// invalid ip
-	testParseIPv4(t, "foobar", false)
-	testParseIPv4(t, "1.2.3", false)
-	testParseIPv4(t, "123.456.789.11", false)
+	testParseIPv4(t, nil, "", false)
+	testParseIPv4(t, nil, "foobar", false)
+	testParseIPv4(t, nil, "1.2.3", false)
+	testParseIPv4(t, nil, "123.456.789.11", false)
+	testParseIPv4(t, nil, "b.1.2.3", false)
+	testParseIPv4(t, nil, "1.2.3.b", false)
+	testParseIPv4(t, nil, "1.2.3.456", false)
 }
 
-func testParseIPv4(t *testing.T, ipStr string, isValid bool) {
-	ip, err := ParseIPv4(nil, []byte(ipStr))
+func testParseIPv4(t *testing.T, dst net.IP, ipStr string, isValid bool) {
+	ip, err := ParseIPv4(dst, []byte(ipStr))
 	if isValid {
 		if err != nil {
-			t.Fatalf("unexpected error when parsing ip %q: %s", ipStr, err)
+			t.Fatalf("unexpected error when parsing ip %q: %v", ipStr, err)
 		}
 		s := string(AppendIPv4(nil, ip))
 		if s != ipStr {
 			t.Fatalf("unexpected ip parsed %q. Expecting %q", s, ipStr)
 		}
-	} else {
-		if err == nil {
-			t.Fatalf("expecting error when parsing ip %q", ipStr)
-		}
+	} else if err == nil {
+		t.Fatalf("expecting error when parsing ip %q", ipStr)
 	}
 }
 
@@ -92,7 +124,7 @@ func testAppendIPv4(t *testing.T, ipStr string, isValid bool) {
 }
 
 func testAppendUint(t *testing.T, n int) {
-	expectedS := fmt.Sprintf("%d", n)
+	expectedS := strconv.Itoa(n)
 	s := AppendUint(nil, n)
 	if string(s) != expectedS {
 		t.Fatalf("unexpected uint %q. Expecting %q. n=%d", s, expectedS, n)
@@ -103,10 +135,10 @@ func testWriteHexInt(t *testing.T, n int, expectedS string) {
 	var w bytebufferpool.ByteBuffer
 	bw := bufio.NewWriter(&w)
 	if err := writeHexInt(bw, n); err != nil {
-		t.Fatalf("unexpected error when writing hex %x: %s", n, err)
+		t.Fatalf("unexpected error when writing hex %x: %v", n, err)
 	}
 	if err := bw.Flush(); err != nil {
-		t.Fatalf("unexpected error when flushing hex %x: %s", n, err)
+		t.Fatalf("unexpected error when flushing hex %x: %v", n, err)
 	}
 	s := string(w.B)
 	if s != expectedS {
@@ -140,7 +172,7 @@ func testReadHexIntSuccess(t *testing.T, s string, expectedN int) {
 	br := bufio.NewReader(r)
 	n, err := readHexInt(br)
 	if err != nil {
-		t.Fatalf("unexpected error: %s. s=%q", err, s)
+		t.Fatalf("unexpected error: %v. s=%q", err, s)
 	}
 	if n != expectedN {
 		t.Fatalf("unexpected hex int %d. Expected %d. s=%q", n, expectedN, s)
@@ -202,6 +234,12 @@ func TestParseUfloatSuccess(t *testing.T) {
 	testParseUfloatSuccess(t, "1234e2", 1234e2)
 	testParseUfloatSuccess(t, "1234E-5", 1234e-5)
 	testParseUfloatSuccess(t, "1.234e+3", 1.234e+3)
+	testParseUfloatSuccess(t, "1234e23", 1234e23)
+	testParseUfloatSuccess(t, "1.234e+32", 1.234e+32)
+	testParseUfloatSuccess(t, "123456789123456789.987654321", 123456789123456789.987654321)
+	testParseUfloatSuccess(t, "1.23456789123456789987654321", 1.23456789123456789987654321)
+	testParseUfloatSuccess(t, "340282346638528859811704183484516925440", 340282346638528859811704183484516925440)
+	testParseUfloatSuccess(t, "00000000000000000001", 1)
 }
 
 func TestParseUfloatError(t *testing.T) {
@@ -231,6 +269,10 @@ func TestParseUfloatError(t *testing.T) {
 
 	// missing exponent
 	testParseUfloatError(t, "123534e")
+
+	// negative number
+	testParseUfloatError(t, "-1")
+	testParseUfloatError(t, "-Inf")
 }
 
 func testParseUfloatError(t *testing.T, s string) {
@@ -246,7 +288,7 @@ func testParseUfloatError(t *testing.T, s string) {
 func testParseUfloatSuccess(t *testing.T, s string, expectedF float64) {
 	f, err := ParseUfloat([]byte(s))
 	if err != nil {
-		t.Fatalf("Unexpected error when parsing %q: %s", s, err)
+		t.Fatalf("Unexpected error when parsing %q: %v", s, err)
 	}
 	delta := f - expectedF
 	if delta < 0 {
@@ -270,7 +312,7 @@ func testParseUintError(t *testing.T, s string) {
 func testParseUintSuccess(t *testing.T, s string, expectedN int) {
 	n, err := ParseUint([]byte(s))
 	if err != nil {
-		t.Fatalf("Unexpected error when parsing %q: %s", s, err)
+		t.Fatalf("Unexpected error when parsing %q: %v", s, err)
 	}
 	if n != expectedN {
 		t.Fatalf("Unexpected value %d. Expected %d. num=%q", n, expectedN, s)

@@ -12,6 +12,9 @@ import (
 
 var strFoobar = []byte("foobar.com")
 
+// it has the same length as Content-Type.
+var strNonSpecialHeader = []byte("Dontent-Type")
+
 type benchReadBuf struct {
 	s []byte
 	n int
@@ -38,7 +41,7 @@ func BenchmarkRequestHeaderRead(b *testing.B) {
 			buf.n = 0
 			br.Reset(buf)
 			if err := h.Read(br); err != nil {
-				b.Fatalf("unexpected error when reading header: %s", err)
+				b.Fatalf("unexpected error when reading header: %v", err)
 			}
 		}
 	})
@@ -55,7 +58,7 @@ func BenchmarkResponseHeaderRead(b *testing.B) {
 			buf.n = 0
 			br.Reset(buf)
 			if err := h.Read(br); err != nil {
-				b.Fatalf("unexpected error when reading header: %s", err)
+				b.Fatalf("unexpected error when reading header: %v", err)
 			}
 		}
 	})
@@ -71,7 +74,7 @@ func BenchmarkRequestHeaderWrite(b *testing.B) {
 		var w bytebufferpool.ByteBuffer
 		for pb.Next() {
 			if _, err := h.WriteTo(&w); err != nil {
-				b.Fatalf("unexpected error when writing header: %s", err)
+				b.Fatalf("unexpected error when writing header: %v", err)
 			}
 			w.Reset()
 		}
@@ -89,19 +92,20 @@ func BenchmarkResponseHeaderWrite(b *testing.B) {
 		var w bytebufferpool.ByteBuffer
 		for pb.Next() {
 			if _, err := h.WriteTo(&w); err != nil {
-				b.Fatalf("unexpected error when writing header: %s", err)
+				b.Fatalf("unexpected error when writing header: %v", err)
 			}
 			w.Reset()
 		}
 	})
 }
 
-func BenchmarkRequestHeaderPeekBytesCanonical(b *testing.B) {
+// Result: 2.2 ns/op.
+func BenchmarkRequestHeaderPeekBytesSpecialHeader(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		var h RequestHeader
-		h.SetBytesV("Host", strFoobar)
+		h.SetContentTypeBytes(strFoobar)
 		for pb.Next() {
-			v := h.PeekBytes(strHost)
+			v := h.PeekBytes(strContentType)
 			if !bytes.Equal(v, strFoobar) {
 				b.Fatalf("unexpected result: %q. Expected %q", v, strFoobar)
 			}
@@ -109,13 +113,41 @@ func BenchmarkRequestHeaderPeekBytesCanonical(b *testing.B) {
 	})
 }
 
-func BenchmarkRequestHeaderPeekBytesNonCanonical(b *testing.B) {
+// Result: 2.9 ns/op.
+func BenchmarkRequestHeaderPeekBytesNonSpecialHeader(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		var h RequestHeader
-		h.SetBytesV("Host", strFoobar)
-		hostBytes := []byte("HOST")
+		h.SetBytesKV(strNonSpecialHeader, strFoobar)
 		for pb.Next() {
-			v := h.PeekBytes(hostBytes)
+			v := h.PeekBytes(strNonSpecialHeader)
+			if !bytes.Equal(v, strFoobar) {
+				b.Fatalf("unexpected result: %q. Expected %q", v, strFoobar)
+			}
+		}
+	})
+}
+
+// Result: 2.3 ns/op.
+func BenchmarkResponseHeaderPeekBytesSpecialHeader(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		var h ResponseHeader
+		h.SetContentTypeBytes(strFoobar)
+		for pb.Next() {
+			v := h.PeekBytes(strContentType)
+			if !bytes.Equal(v, strFoobar) {
+				b.Fatalf("unexpected result: %q. Expected %q", v, strFoobar)
+			}
+		}
+	})
+}
+
+// Result: 2.9 ns/op.
+func BenchmarkResponseHeaderPeekBytesNonSpecialHeader(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		var h ResponseHeader
+		h.SetBytesKV(strNonSpecialHeader, strFoobar)
+		for pb.Next() {
+			v := h.PeekBytes(strNonSpecialHeader)
 			if !bytes.Equal(v, strFoobar) {
 				b.Fatalf("unexpected result: %q. Expected %q", v, strFoobar)
 			}
@@ -148,13 +180,26 @@ func benchmarkNormalizeHeaderKey(b *testing.B, src []byte) {
 	})
 }
 
+func BenchmarkVisitHeaderParams(b *testing.B) {
+	var h RequestHeader
+	h.SetBytesKV(strContentType, []byte(`text/plain  ;  foo=bar  ;   param2="dquote is: [\"], ok?" ; version=1; q=0.324  `))
+
+	header := h.ContentType()
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		VisitHeaderParams(header, func(key, value []byte) bool { return true })
+	}
+}
+
 func BenchmarkRemoveNewLines(b *testing.B) {
 	type testcase struct {
 		value         string
 		expectedValue string
 	}
 
-	var testcases = []testcase{
+	testcases := []testcase{
 		{value: "MaliciousValue", expectedValue: "MaliciousValue"},
 		{value: "MaliciousValue\r\n", expectedValue: "MaliciousValue  "},
 		{value: "Malicious\nValue", expectedValue: "Malicious Value"},
@@ -177,4 +222,13 @@ func BenchmarkRemoveNewLines(b *testing.B) {
 			}
 		})
 	}
+}
+
+func BenchmarkRequestHeaderIsGet(b *testing.B) {
+	req := &RequestHeader{method: []byte(MethodGet)}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			req.IsGet()
+		}
+	})
 }
