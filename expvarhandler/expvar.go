@@ -21,7 +21,7 @@ var (
 //
 // Expvars may be filtered by regexp provided via 'r' query argument.
 //
-// See https://golang.org/pkg/expvar/ for details.
+// See https://pkg.go.dev/expvar for details.
 func ExpvarHandler(ctx *fasthttp.RequestCtx) {
 	expvarHandlerCalls.Add(1)
 
@@ -30,7 +30,7 @@ func ExpvarHandler(ctx *fasthttp.RequestCtx) {
 	r, err := getExpvarRegexp(ctx)
 	if err != nil {
 		expvarRegexpErrors.Add(1)
-		fmt.Fprintf(ctx, "Error when obtaining expvar regexp: %s", err)
+		fmt.Fprintf(ctx, "Error when obtaining expvar regexp: %v", err)
 		ctx.SetStatusCode(fasthttp.StatusBadRequest)
 		return
 	}
@@ -53,12 +53,12 @@ func ExpvarHandler(ctx *fasthttp.RequestCtx) {
 
 func getExpvarRegexp(ctx *fasthttp.RequestCtx) (*regexp.Regexp, error) {
 	r := string(ctx.QueryArgs().Peek("r"))
-	if len(r) == 0 {
+	if r == "" {
 		return defaultRE, nil
 	}
 	rr, err := regexp.Compile(r)
 	if err != nil {
-		return nil, fmt.Errorf("cannot parse r=%q: %s", r, err)
+		return nil, fmt.Errorf("cannot parse r=%q: %w", r, err)
 	}
 	return rr, nil
 }

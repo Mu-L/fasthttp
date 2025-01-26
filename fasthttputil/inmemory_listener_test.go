@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"sync"
@@ -14,8 +13,6 @@ import (
 )
 
 func TestInmemoryListener(t *testing.T) {
-	t.Parallel()
-
 	ln := NewInmemoryListener()
 
 	ch := make(chan struct{})
@@ -23,13 +20,13 @@ func TestInmemoryListener(t *testing.T) {
 		go func(n int) {
 			conn, err := ln.Dial()
 			if err != nil {
-				t.Errorf("unexpected error: %s", err)
+				t.Errorf("unexpected error: %v", err)
 			}
 			defer conn.Close()
 			req := fmt.Sprintf("request_%d", n)
 			nn, err := conn.Write([]byte(req))
 			if err != nil {
-				t.Errorf("unexpected error: %s", err)
+				t.Errorf("unexpected error: %v", err)
 			}
 			if nn != len(req) {
 				t.Errorf("unexpected number of bytes written: %d. Expecting %d", nn, len(req))
@@ -37,7 +34,7 @@ func TestInmemoryListener(t *testing.T) {
 			buf := make([]byte, 30)
 			nn, err = conn.Read(buf)
 			if err != nil {
-				t.Errorf("unexpected error: %s", err)
+				t.Errorf("unexpected error: %v", err)
 			}
 			buf = buf[:nn]
 			resp := fmt.Sprintf("response_%d", n)
@@ -63,7 +60,7 @@ func TestInmemoryListener(t *testing.T) {
 			buf := make([]byte, 30)
 			n, err := conn.Read(buf)
 			if err != nil {
-				t.Errorf("unexpected error: %s", err)
+				t.Errorf("unexpected error: %v", err)
 			}
 			buf = buf[:n]
 			if !bytes.HasPrefix(buf, []byte("request_")) {
@@ -72,7 +69,7 @@ func TestInmemoryListener(t *testing.T) {
 			resp := fmt.Sprintf("response_%s", buf[len("request_"):])
 			n, err = conn.Write([]byte(resp))
 			if err != nil {
-				t.Errorf("unexpected error: %s", err)
+				t.Errorf("unexpected error: %v", err)
 			}
 			if n != len(resp) {
 				t.Errorf("unexpected number of bytes written: %d. Expecting %d", n, len(resp))
@@ -89,7 +86,7 @@ func TestInmemoryListener(t *testing.T) {
 	}
 
 	if err := ln.Close(); err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	select {
@@ -108,7 +105,7 @@ func (s *echoServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 	time.Sleep(time.Millisecond * 100)
 	if _, err := io.Copy(w, r.Body); err != nil {
-		s.t.Fatalf("unexpected error: %s", err)
+		s.t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -126,12 +123,12 @@ func testInmemoryListenerHTTP(t *testing.T, f func(t *testing.T, client *http.Cl
 	}
 
 	server := &http.Server{
-		Handler: &echoServerHandler{t},
+		Handler: &echoServerHandler{t: t},
 	}
 
 	go func() {
 		if err := server.Serve(ln); err != nil && err != http.ErrServerClosed {
-			t.Errorf("unexpected error: %s", err)
+			t.Errorf("unexpected error: %v", err)
 		}
 	}()
 
@@ -145,29 +142,26 @@ func testInmemoryListenerHTTP(t *testing.T, f func(t *testing.T, client *http.Cl
 func testInmemoryListenerHTTPSingle(t *testing.T, client *http.Client, content string) {
 	res, err := client.Post("http://...", "text/plain", bytes.NewBufferString(content))
 	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	b, err := ioutil.ReadAll(res.Body)
+	defer func() { _ = res.Body.Close() }()
+	b, err := io.ReadAll(res.Body)
 	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 	s := string(b)
 	if string(b) != content {
-		t.Fatalf("unexpected response %s, expecting %s", s, content)
+		t.Fatalf("unexpected response %q, expecting %q", s, content)
 	}
 }
 
 func TestInmemoryListenerHTTPSingle(t *testing.T) {
-	t.Parallel()
-
 	testInmemoryListenerHTTP(t, func(t *testing.T, client *http.Client) {
 		testInmemoryListenerHTTPSingle(t, client, "request")
 	})
 }
 
 func TestInmemoryListenerHTTPSerial(t *testing.T) {
-	t.Parallel()
-
 	testInmemoryListenerHTTP(t, func(t *testing.T, client *http.Client) {
 		for i := 0; i < 10; i++ {
 			testInmemoryListenerHTTPSingle(t, client, fmt.Sprintf("request_%d", i))
@@ -176,8 +170,6 @@ func TestInmemoryListenerHTTPSerial(t *testing.T) {
 }
 
 func TestInmemoryListenerHTTPConcurrent(t *testing.T) {
-	t.Parallel()
-
 	testInmemoryListenerHTTP(t, func(t *testing.T, client *http.Client) {
 		var wg sync.WaitGroup
 		for i := 0; i < 10; i++ {
@@ -189,4 +181,93 @@ func TestInmemoryListenerHTTPConcurrent(t *testing.T) {
 		}
 		wg.Wait()
 	})
+}
+
+func acceptLoop(ln net.Listener) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+
+		conn.Close()
+	}
+}
+
+func TestInmemoryListenerAddrDefault(t *testing.T) {
+	ln := NewInmemoryListener()
+
+	verifyAddr(t, ln.Addr(), inmemoryAddr(0))
+
+	go func() {
+		c, err := ln.Dial()
+		if err != nil {
+			panic(err)
+		}
+
+		c.Close()
+	}()
+
+	lc, err := ln.Accept()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	verifyAddr(t, lc.LocalAddr(), inmemoryAddr(0))
+	verifyAddr(t, lc.RemoteAddr(), pipeAddr(0))
+
+	go acceptLoop(ln)
+
+	c, err := ln.Dial()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	verifyAddr(t, c.LocalAddr(), pipeAddr(0))
+	verifyAddr(t, c.RemoteAddr(), inmemoryAddr(0))
+}
+
+func verifyAddr(t *testing.T, got, expected net.Addr) {
+	if got != expected {
+		t.Fatalf("unexpected addr: %v. Expecting %v", got, expected)
+	}
+}
+
+func TestInmemoryListenerAddrCustom(t *testing.T) {
+	ln := NewInmemoryListener()
+
+	listenerAddr := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 12345}
+
+	ln.SetLocalAddr(listenerAddr)
+
+	verifyAddr(t, ln.Addr(), listenerAddr)
+
+	go func() {
+		c, err := ln.Dial()
+		if err != nil {
+			panic(err)
+		}
+
+		c.Close()
+	}()
+
+	lc, err := ln.Accept()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	verifyAddr(t, lc.LocalAddr(), listenerAddr)
+	verifyAddr(t, lc.RemoteAddr(), pipeAddr(0))
+
+	go acceptLoop(ln)
+
+	clientAddr := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 2), Port: 65432}
+
+	c, err := ln.DialWithLocalAddr(clientAddr)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	verifyAddr(t, c.LocalAddr(), clientAddr)
+	verifyAddr(t, c.RemoteAddr(), listenerAddr)
 }
