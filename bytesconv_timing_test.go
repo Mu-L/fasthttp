@@ -18,7 +18,7 @@ func BenchmarkAppendHTMLEscape(b *testing.B) {
 			for i := 0; i < 10; i++ {
 				buf = AppendHTMLEscape(buf[:0], sOrig)
 				if string(buf) != sExpected {
-					b.Fatalf("unexpected escaped string: %s. Expecting %s", buf, sExpected)
+					b.Fatalf("unexpected escaped string: %q. Expecting %q", buf, sExpected)
 				}
 			}
 		}
@@ -34,7 +34,7 @@ func BenchmarkHTMLEscapeString(b *testing.B) {
 			for i := 0; i < 10; i++ {
 				s = html.EscapeString(sOrig)
 				if s != sExpected {
-					b.Fatalf("unexpected escaped string: %s. Expecting %s", s, sExpected)
+					b.Fatalf("unexpected escaped string: %q. Expecting %q", s, sExpected)
 				}
 			}
 		}
@@ -49,7 +49,7 @@ func BenchmarkParseIPv4(b *testing.B) {
 		for pb.Next() {
 			ip, err = ParseIPv4(ip, ipStr)
 			if err != nil {
-				b.Fatalf("unexpected error: %s", err)
+				b.Fatalf("unexpected error: %v", err)
 			}
 		}
 	})
@@ -88,10 +88,10 @@ func BenchmarkParseUint(b *testing.B) {
 		for pb.Next() {
 			n, err := ParseUint(buf)
 			if err != nil {
-				b.Fatalf("unexpected error: %s", err)
+				b.Fatalf("unexpected error: %v", err)
 			}
 			if n != 1234567 {
-				b.Fatalf("unexpected result: %d. Expecting %s", n, buf)
+				b.Fatalf("unexpected result: %d. Expecting %q", n, buf)
 			}
 		}
 	})
@@ -160,6 +160,30 @@ func BenchmarkAppendUnquotedArgSlowPath(b *testing.B) {
 		var dst []byte
 		for pb.Next() {
 			dst = AppendUnquotedArg(dst[:0], src)
+		}
+	})
+}
+
+func BenchmarkParseUfloat(b *testing.B) {
+	src := [][]byte{
+		[]byte("0"),
+		[]byte("1234566789."),
+		[]byte(".1234556778"),
+		[]byte("123.456"),
+		[]byte("123456789"),
+		[]byte("1234e23"),
+		[]byte("1234E-51"),
+		[]byte("1.234e+32"),
+		[]byte("123456789123456789.987654321"),
+	}
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			for i := range src {
+				_, err := ParseUfloat(src[i])
+				if err != nil {
+					b.Fatalf("unexpected error: %v", err)
+				}
+			}
 		}
 	})
 }
